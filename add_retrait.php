@@ -1,4 +1,18 @@
 <?php
+session_start(); // 1. On démarre la session (OBLIGATOIRE)
+
+// =========================================================
+// 🛡️ SÉCURITÉ : ACCÈS RESTREINT AUX ADMINS
+// =========================================================
+// Si l'utilisateur n'est pas connecté OU qu'il n'a pas le rôle 'admin'
+if (!isset($_SESSION['is_logged_in']) || $_SESSION['is_logged_in'] !== true || 
+    !isset($_SESSION['user_role']) || $_SESSION['user_role'] !== 'admin') {
+    
+    // On le vire vers l'accueil
+    header("Location: index.php");
+    exit;
+}
+
 // =========================================================
 // 🌐 CONFIGURATION API SUPABASE
 // =========================================================
@@ -155,6 +169,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="container">
     <div class="card p-4 shadow-sm">
         <h1 class="text-center mb-3 header-main"><i class="fas fa-plus-circle me-2"></i> Enregistrer un Retrait (USD)</h1>
+        
+        <p class="text-center mb-3">
+            <span class="badge bg-success">Mode Administrateur Actif</span>
+        </p>
+
         <a href="index.php" class="back-link">← Retour au tableau de bord</a>
 
         <div class="alert alert-info text-center">
