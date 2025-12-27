@@ -1,33 +1,98 @@
 <?php
+session_start();
+
 // =========================================================
-// 🌐 CONFIGURATION API SUPABASE (REST)
+// 🔐 CONFIGURATION & SÉCURITÉ (SUPABASE AUTH)
 // =========================================================
-$supabase_url = "https://glqreyurigjcqkmvftme.supabase.co/rest/v1/ventes_brainrot?select=*&order=date_vente.desc";
+
+// Tes identifiants Supabase (Identiques à ton code)
+$supabase_base_url = "https://glqreyurigjcqkmvftme.supabase.co/rest/v1";
 $api_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdscXJleXVyaWdqY3FrbXZmdG1lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMTIyNDMsImV4cCI6MjA4MTU4ODI0M30.Ia5zV8zwT5SqWrFO1161nwFaXKVI0uOasseKTQVMZgo";
 
-// --- Récupération des données via HTTP ---
-$opts = [
-    "http" => [
-        "method" => "GET",
-        "header" => "apikey: " . $api_key . "\r\n" .
-                    "Authorization: Bearer " . $api_key . "\r\n"
-    ]
-];
-
-$context = stream_context_create($opts);
-$response = @file_get_contents($supabase_url, false, $context);
-
-if ($response === FALSE) {
-    die("<div style='font-family:sans-serif; padding:20px; background:#fff5f5; color:#c53030; border:1px solid #feb2b2; border-radius:8px;'>
-            <h3>⚠️ Erreur de connexion API</h3>
-            Impossible de récupérer les données depuis Supabase. Vérifiez votre connexion internet ou votre clé API.
-         </div>");
+// 1. Gestion de la déconnexion
+if (isset($_GET['logout'])) {
+    session_destroy();
+    header("Location: index.php");
+    exit;
 }
 
-$toutes_les_ventes = json_decode($response, true);
+// 2. Traitement du formulaire de connexion
+$login_error = "";
+if (isset($_POST['login_btn'])) {
+    $u_name = trim($_POST['username']);
+    $u_pass = trim($_POST['password']);
+
+    // On cherche l'utilisateur dans la table 'users' de Supabase
+    // Note : On utilise urlencode pour éviter les bugs si le pseudo a des espaces
+    $auth_url = $supabase_base_url . "/users?name=eq." . urlencode($u_name) . "&select=*";
+    
+    $opts_auth = [
+        "http" => [
+            "method" => "GET",
+            "header" => "apikey: " . $api_key . "\r\n" .
+                        "Authorization: Bearer " . $api_key . "\r\n"
+        ]
+    ];
+    
+    $context_auth = stream_context_create($opts_auth);
+    $result_auth = @file_get_contents($auth_url, false, $context_auth);
+    
+    if ($result_auth) {
+        $data_user = json_decode($result_auth, true);
+        
+        // Si l'utilisateur existe et que le mot de passe correspond
+        if (!empty($data_user) && isset($data_user[0])) {
+            if ($data_user[0]['password'] === $u_pass) {
+                $_SESSION['is_logged_in'] = true;
+                $_SESSION['user_name'] = $data_user[0]['name'];
+                // On recharge la page pour enlever le POST
+                header("Location: index.php");
+                exit;
+            } else {
+                $login_error = "Mot de passe incorrect.";
+            }
+        } else {
+            $login_error = "Utilisateur inconnu.";
+        }
+    } else {
+        $login_error = "Erreur de connexion au serveur.";
+    }
+}
+
+// Est-ce que l'utilisateur est connecté ?
+$is_logged_in = isset($_SESSION['is_logged_in']) && $_SESSION['is_logged_in'] === true;
+
 
 // =========================================================
-// 🧠 LOGIQUE DE TRADUCTION ET TAUX DE CHANGE
+// 🌐 RÉCUPÉRATION DES DONNÉES (Uniquement si connecté)
+// =========================================================
+
+$toutes_les_ventes = []; // Vide par défaut pour ne pas faire planter le PHP
+
+if ($is_logged_in) {
+    $ventes_url = $supabase_base_url . "/ventes_brainrot?select=*&order=date_vente.desc";
+
+    $opts_data = [
+        "http" => [
+            "method" => "GET",
+            "header" => "apikey: " . $api_key . "\r\n" .
+                        "Authorization: Bearer " . $api_key . "\r\n"
+        ]
+    ];
+
+    $context_data = stream_context_create($opts_data);
+    $response = @file_get_contents($ventes_url, false, $context_data);
+
+    if ($response !== FALSE) {
+        $toutes_les_ventes = json_decode($response, true);
+    } else {
+        // En cas d'erreur API interne une fois connecté
+        echo "<div style='background:red;color:white;padding:10px;text-align:center;'>Erreur chargement Supabase</div>";
+    }
+}
+
+// =========================================================
+// 🧠 LOGIQUE DE TRADUCTION ET TAUX DE CHANGE (CODE ORIGINAL)
 // =========================================================
 
 function traduire_mois($date_format) {
@@ -40,15 +105,18 @@ function traduire_mois($date_format) {
 }
 
 $historique_taux = [];
-try {
-    $arrContextOptions=array("ssl"=>array("verify_peer"=>false,"verify_peer_name"=>false));  
-    $api_frank = "https://api.frankfurter.app/2023-01-01..?from=USD&to=EUR";
-    $json_taux = @file_get_contents($api_frank, false, stream_context_create($arrContextOptions));
-    if ($json_taux) {
-        $data_taux = json_decode($json_taux, true);
-        if (isset($data_taux['rates'])) { $historique_taux = $data_taux['rates']; }
-    }
-} catch (Exception $e) {}
+// On ne charge les taux que si on a des ventes à traiter, pour optimiser
+if ($is_logged_in) {
+    try {
+        $arrContextOptions=array("ssl"=>array("verify_peer"=>false,"verify_peer_name"=>false));  
+        $api_frank = "https://api.frankfurter.app/2023-01-01..?from=USD&to=EUR";
+        $json_taux = @file_get_contents($api_frank, false, stream_context_create($arrContextOptions));
+        if ($json_taux) {
+            $data_taux = json_decode($json_taux, true);
+            if (isset($data_taux['rates'])) { $historique_taux = $data_taux['rates']; }
+        }
+    } catch (Exception $e) {}
+}
 
 function get_taux_reel($date_vente, $historique_taux) {
     $date_obj = new DateTime($date_vente);
@@ -66,44 +134,48 @@ function get_taux_reel($date_vente, $historique_taux) {
 // 📊 TRAITEMENT DES DONNÉES ET STATISTIQUES
 // =========================================================
 
+// Initialisation des variables à 0 pour l'affichage "vide" si pas connecté
 $stats_mensuelles = []; $retraits_par_mois = []; $stats_hebdo = [];
 $total_ca_usd = 0; $total_ca_eur = 0; $total_retraits = 0;
 $max_win = 0; $total_amounts = 0; 
 
 $mois_actuel_key = date('Y-m'); $jour_actuel = date('d');
 
-foreach ($toutes_les_ventes as $vente) {
-    $date = $vente['date_vente'];
-    $montant_usd = $vente['montant'];
-    
-    $taux_du_jour = get_taux_reel($date, $historique_taux);
-    $montant_eur = $montant_usd * $taux_du_jour;
-    
-    $vente['montant_eur'] = $montant_eur;
-    $vente['taux_appliq'] = $taux_du_jour;
-    
-    $mois_key = date('Y-m', strtotime($date));
-    $semaine_key = date('o-W', strtotime($date)); 
-    
-    if (!isset($stats_mensuelles[$mois_key])) {
-        $stats_mensuelles[$mois_key] = ['mois'=>$mois_key, 'nb_retraits'=>0, 'ca_mensuel_usd'=>0, 'ca_mensuel_eur'=>0];
-    }
-    $stats_mensuelles[$mois_key]['nb_retraits']++;
-    $stats_mensuelles[$mois_key]['ca_mensuel_usd'] += $montant_usd;
-    $stats_mensuelles[$mois_key]['ca_mensuel_eur'] += $montant_eur;
-    
-    if ($date >= date('Y-m-d', strtotime('-8 weeks'))) {
-        if (!isset($stats_hebdo[$semaine_key])) $stats_hebdo[$semaine_key] = ['usd'=>0, 'start_date'=>$date];
-        $stats_hebdo[$semaine_key]['usd'] += $montant_usd;
-        $stats_hebdo[$semaine_key]['start_date'] = date('Y-m-d', strtotime('monday this week', strtotime($date)));
-    }
+// On ne boucle que si on a des données
+if (!empty($toutes_les_ventes)) {
+    foreach ($toutes_les_ventes as $vente) {
+        $date = $vente['date_vente'];
+        $montant_usd = $vente['montant'];
+        
+        $taux_du_jour = get_taux_reel($date, $historique_taux);
+        $montant_eur = $montant_usd * $taux_du_jour;
+        
+        $vente['montant_eur'] = $montant_eur;
+        $vente['taux_appliq'] = $taux_du_jour;
+        
+        $mois_key = date('Y-m', strtotime($date));
+        $semaine_key = date('o-W', strtotime($date)); 
+        
+        if (!isset($stats_mensuelles[$mois_key])) {
+            $stats_mensuelles[$mois_key] = ['mois'=>$mois_key, 'nb_retraits'=>0, 'ca_mensuel_usd'=>0, 'ca_mensuel_eur'=>0];
+        }
+        $stats_mensuelles[$mois_key]['nb_retraits']++;
+        $stats_mensuelles[$mois_key]['ca_mensuel_usd'] += $montant_usd;
+        $stats_mensuelles[$mois_key]['ca_mensuel_eur'] += $montant_eur;
+        
+        if ($date >= date('Y-m-d', strtotime('-8 weeks'))) {
+            if (!isset($stats_hebdo[$semaine_key])) $stats_hebdo[$semaine_key] = ['usd'=>0, 'start_date'=>$date];
+            $stats_hebdo[$semaine_key]['usd'] += $montant_usd;
+            $stats_hebdo[$semaine_key]['start_date'] = date('Y-m-d', strtotime('monday this week', strtotime($date)));
+        }
 
-    $retraits_par_mois[$mois_key][] = $vente;
-    $total_ca_usd += $montant_usd;
-    $total_ca_eur += $montant_eur;
-    $total_retraits++;
-    if ($montant_usd > $max_win) $max_win = $montant_usd;
-    $total_amounts += $montant_usd;
+        $retraits_par_mois[$mois_key][] = $vente;
+        $total_ca_usd += $montant_usd;
+        $total_ca_eur += $montant_eur;
+        $total_retraits++;
+        if ($montant_usd > $max_win) $max_win = $montant_usd;
+        $total_amounts += $montant_usd;
+    }
 }
 
 $avg_win = $total_retraits > 0 ? $total_amounts / $total_retraits : 0;
@@ -127,7 +199,8 @@ if ($ca_precedent_pmtd_usd > 0) {
 
 $nb_jours_mois = date('t');
 $jours_passes = max(1, (int)$jour_actuel);
-$projection_usd = ($ca_actuel_usd / $jours_passes) * $nb_jours_mois;
+// Protection division par zéro si pas de ventes
+$projection_usd = ($jours_passes > 0) ? ($ca_actuel_usd / $jours_passes) * $nb_jours_mois : 0;
 
 ksort($stats_hebdo);
 $labels_hebdo = []; $data_hebdo = [];
@@ -195,12 +268,77 @@ $stats_mensuelles = array_slice($stats_mensuelles, 0, 12);
         .badge-stat span.val { font-weight: 700; font-size: 1.1rem; color: #2e2e2e; }
         .badge-stat span.lbl { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
         .rate-badge { font-size: 0.75rem; background: #e9ecef; padding: 2px 6px; border-radius: 4px; color: #666; }
+
+        /* --- STYLE DU POPUP DE CONNEXION --- */
+        .login-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(245, 247, 250, 0.85); /* Fond blanc/gris transparent */
+            backdrop-filter: blur(15px); /* Effet de flou puissant */
+            -webkit-backdrop-filter: blur(15px); /* Pour Safari */
+            z-index: 9999; 
+            display: flex; align-items: center; justify-content: center;
+        }
+        .login-card {
+            width: 90%; max-width: 400px;
+            padding: 3rem;
+            background: white;
+            border-radius: 1.5rem;
+            box-shadow: 0 20px 50px rgba(74, 111, 165, 0.2);
+            text-align: center;
+            border: 1px solid #e7effa;
+            animation: fadeIn 0.5s ease-out;
+        }
+        .login-input {
+            border-radius: 0.75rem;
+            padding: 14px;
+            border: 2px solid #e7effa;
+            width: 100%;
+            margin-bottom: 1rem;
+            text-align: center;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+            outline: none;
+        }
+        .login-input:focus { border-color: #4a6fa5; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
 
+<?php if (!$is_logged_in): ?>
+<div class="login-overlay">
+    <div class="login-card">
+        <div style="font-size: 3rem; margin-bottom: 10px;">🧠</div>
+        <h2 style="color: #4a6fa5; font-weight: 800; margin-bottom: 5px;">Brainrot Access</h2>
+        <p class="text-muted small mb-4">Veuillez vous identifier pour accéder aux données.</p>
+        
+        <form method="POST">
+            <input type="text" name="username" class="login-input" placeholder="Utilisateur" required autofocus autocomplete="off">
+            <input type="password" name="password" class="login-input" placeholder="Mot de passe" required>
+            
+            <?php if ($login_error): ?>
+                <div class="alert alert-danger p-2 small mb-3"><?= $login_error ?></div>
+            <?php endif; ?>
+            
+            <button type="submit" name="login_btn" class="btn action-button w-100 py-3">
+                <i class="fas fa-lock me-2"></i> Déverrouiller
+            </button>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
 <div class="container">
-    <h1 class="text-center mb-4 header-main">Tableau de Bord "Steal A Brainrot"</h1>
+    <div class="d-flex justify-content-between align-items-center mb-4 mt-3">
+        <div></div>
+        <h1 class="text-center header-main m-0 flex-grow-1">Tableau de Bord "Steal A Brainrot"</h1>
+        <div style="width: 100px; text-align: right;">
+            <?php if ($is_logged_in): ?>
+                <a href="?logout=1" class="btn btn-sm btn-outline-danger" title="Déconnexion"><i class="fas fa-power-off"></i></a>
+            <?php endif; ?>
+        </div>
+    </div>
+    
     <p class="text-center mb-4 text-muted">
         <i class="fas fa-globe text-primary"></i> Monnaie principale : <strong>USD ($)</strong> (Conversion EUR dynamique via API)
     </p>
