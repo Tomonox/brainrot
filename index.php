@@ -168,7 +168,7 @@ $stats_mensuelles = array_slice($stats_mensuelles, 0, 12);
         .login-card { width: 90%; max-width: 400px; padding: 2rem; background: white; border-radius: 1.5rem; box-shadow: 0 20px 50px rgba(0,0,0,0.1); text-align: center; }
         .login-input { border-radius: 0.75rem; padding: 12px; border: 2px solid #e7effa; width: 100%; margin-bottom: 1rem; text-align: center; }
         
-        /* --- STYLE DES BADGES STATS --- */
+        /* --- STYLE DES BADGES STATS (DESIGN PC) --- */
         .badge-stat { 
             background: white; padding: 15px 20px; border-radius: 12px; 
             display: flex; align-items: center; gap: 15px; 
@@ -331,7 +331,7 @@ $stats_mensuelles = array_slice($stats_mensuelles, 0, 12);
     <div class="row g-4 mb-5">
         <div class="col-12">
             <div class="card p-4">
-                <h5 class="mb-3" style="color: #4a6fa5; font-weight: 600;">🏃 La Course (Cumulé USD)</h5>
+                <h5 class="mb-3" style="color: #4a6fa5; font-weight: 600;">🏃 La Course : Ce mois vs Mois Dernier (Cumulé USD)</h5>
                 <div class="chart-container"><canvas id="cumulativeChart"></canvas></div>
             </div>
         </div>
