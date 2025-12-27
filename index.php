@@ -308,7 +308,6 @@ $stats_mensuelles = array_slice($stats_mensuelles, 0, 12);
 <?php if (!$is_logged_in): ?>
 <div class="login-overlay">
     <div class="login-card">
-        <div style="font-size: 3rem; margin-bottom: 10px;">🧠</div>
         <h2 style="color: #4a6fa5; font-weight: 800; margin-bottom: 5px;">Brainrot Access</h2>
         <p class="text-muted small mb-4">Veuillez vous identifier pour accéder aux données.</p>
         
